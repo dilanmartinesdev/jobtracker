@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jobtracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: jobtracker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobtracker -d jobtracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://jobtracker:${POSTGRES_PASSWORD}@db:5432/jobtracker
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (32+ characters)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # The API is reachable only through nginx (it publishes no port), and nginx overwrites
+      # X-Forwarded-For with the real client address. So it is safe to trust that header here,
+      # which makes the login rate limit count per client instead of per nginx container.
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
